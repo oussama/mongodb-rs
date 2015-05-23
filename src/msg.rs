@@ -6,6 +6,13 @@ use bson::{Bson, Document, Array, Encoder, Decoder};
 use std::io::{Write,Read};
 use std::ffi::CString;
 
+static mut request_id : i32 = 0;
+fn new_request_id() ->i32 {
+	unsafe {
+		request_id+=1;
+		request_id
+	}
+}
 
 pub trait Message {	
 	fn encode(&mut self,&mut Write){
@@ -55,7 +62,7 @@ impl MsgHeader {
 	pub fn new(opcode:OpCode)->MsgHeader {
 		MsgHeader {
 			len:0,
-			id:234,
+			id:new_request_id(),
 			resp_to:0,
 			opcode:opcode,
 		}
@@ -66,9 +73,7 @@ impl MsgHeader {
 		let _ = buf.write_i32::<LittleEndian>(self.resp_to); 
 		let _ = buf.write_i32::<LittleEndian>(self.opcode.clone() as i32); 
 	}
-	pub fn set_id(&mut self,id:i32){
-		self.id = id;
-	}
+
 	pub fn get_id(&mut self)->i32{
 		self.id
 	}

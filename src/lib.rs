@@ -5,14 +5,19 @@ extern crate byteorder;
 extern crate bson;
 
 pub mod msg;
+pub mod utils;
 
 use self::msg::*;
+use self::utils::*;
 use self::bson::{Bson, Document, Array, Encoder, Decoder};
 use std::net::TcpStream;
 use std::io::{Write,Read};
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::collections::BTreeMap;
+
+
+
 
 pub trait Connection:Read+Write{}
 impl<T: Read + Write> Connection for T {}
@@ -67,6 +72,18 @@ impl<T : Connection> Database<T> {
 
 impl<T : Connection> Database<T> {
 	
+	#[inline]
+	fn send<M:Message>(&self,mut msg:M)  {
+		msg.encode(&mut *self.connection.borrow_mut());
+	}
+	
+	#[inline]
+	fn recv(&self) -> OpReply {
+		OpReply::decode(&mut *self.connection.borrow_mut())
+	}
+	
+
+	
 	pub fn coll(&self,name:&str) -> Collection<T>{
 		Collection{
 			connection:self.connection.clone(),
@@ -88,38 +105,71 @@ pub struct Collection<T : Connection> {
 
 impl<T: Connection> Collection<T > {	
 	
+	#[inline]
+	fn send<M:Message>(&self,mut msg:M)  {
+		msg.encode(&mut *self.connection.borrow_mut());
+	}
+	
+	#[inline]
+	fn recv(&self) -> OpReply {
+		OpReply::decode(&mut *self.connection.borrow_mut())
+	}
+	
+	pub fn command(&self,doc:&Document) -> OpReply {
+		let mut msg = OpQuery::new(&self.name_space,doc,None,1);
+		self.send(msg);
+		self.recv()
+	}
 	
 	pub fn insert(&self,doc:&mut Document){
-		//doc.insert("_id".to_string(), Bson::ObjectId([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]));
 		let mut docs = Vec::new();
 		docs.push(&*doc);
 		
 		let mut msg = OpInsert::new(&self.name_space,&docs);
-		msg.encode(&mut *self.connection.borrow_mut());
+		self.send(msg);
 	}
 	
-	pub fn insert_multiple(&self,docs:&Vec<&Document>){
+	pub fn insert_bulk(&self,docs:&Vec<&Document>){
 		let mut msg = OpInsert::new(&self.name_space,docs);
-		msg.encode(&mut *self.connection.borrow_mut());
+		self.send(msg);
+	}
+	
+	pub fn find_one(&self,selector:&Document)-> Option<Document> {
+		let mut msg = OpQuery::new(&self.name_space,selector,None,1);
+		self.send(msg);
+		let reply = OpReply::decode(&mut *self.connection.borrow_mut());
+		if reply.docs().len() == 0 {
+			None
+		}else{
+			Some(reply.docs()[0].clone())
+		}
+	}
+	
+	
+	// TODO: check, fix and create better return
+	pub fn find_and_modify(&self,query:Bson,update:Bson)-> Option<Document> {
+		let mut doc = Document::new();
+		doc.insert_str("findAndModify", &self.name);
+    	doc.insert("query".to_string(), query );
+    	doc.insert("update".to_string(), update );
+		let reply = self.command(&doc);
+
+		if reply.docs().len() == 0 {
+			None
+		}else{
+			Some(reply.docs()[0].clone())
+		}
 	}
 	
 	pub fn count(&self)-> i32 {
 		let mut doc = Document::new();
-    	doc.insert("count".to_string(), Bson::String(self.name.clone()) );
-		let reply = run_command(&mut *self.connection.borrow_mut(),self.db_name.clone(),&doc);
+    	doc.insert_str("count", &self.name);
+		let reply = self.command(&doc);
 		match *reply.docs()[0].get("n").unwrap() {
 			Bson::I32(n) => n,
 			_ => -1	
 		}
 	}
-}
-
-
-fn run_command<T:Connection>(connection:&mut T,db_name:String,doc:&Document) -> OpReply {
-		let name_space = db_name+".$cmd";
-		let mut msg = OpQuery::new(&*name_space,&doc,None,1);
-		msg.encode(connection);
-		OpReply::decode(connection)
 }
 
 
