@@ -22,3 +22,8 @@ exclude = [
 [dependencies]
 bson-rs = "*"
 byteorder = "*"
+
+
+[[bin]]
+
+name = "mongodb_test"

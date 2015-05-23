@@ -55,7 +55,7 @@ impl MsgHeader {
 	pub fn new(opcode:OpCode)->MsgHeader {
 		MsgHeader {
 			len:0,
-			id:0,
+			id:234,
 			resp_to:0,
 			opcode:opcode,
 		}
@@ -137,7 +137,7 @@ impl OpInsert {
 		{
 		   let mut encoder = Encoder::new(&mut docs_bytes);
 		   for doc in docs {
-		   		let _ = encoder.encode_document(doc);
+		   		let _ = encoder.encode_document(&doc);
 		   }
 		}
 			 
@@ -164,7 +164,7 @@ impl  Message for OpInsert {
 		let _ = buf.write(&self.docs);
 	}
 	fn len(&self)->i32{
-		(16+9+self.name_space.as_bytes().len()+self.docs.len()) as i32
+		(16+5+self.name_space.as_bytes().len()+self.docs.len()) as i32
 	}
 }
 
@@ -314,7 +314,7 @@ pub struct OpQuery {
 	ret_field_selector : Option<Vec<u8>>,
 }
 impl OpQuery {
-	pub fn new(name_space:&str,query:&Document,ret_field_selector: Option<&Document>) ->OpQuery {
+	pub fn new(name_space:&str,query:&Document,ret_field_selector: Option<&Document>,nret:i32) ->OpQuery {
 		let mut query_bytes = Vec::<u8>::new();
 		{
 		   let mut encoder = Encoder::new(&mut query_bytes);
@@ -336,7 +336,7 @@ impl OpQuery {
 			flags : 0,
 			name_space :CString::new(name_space).unwrap(),
 			nskip : 0,
-			nret : 0,
+			nret : nret,
 			query : query_bytes,
 			ret_field_selector : ret_field_selector_bytes,
 		};
@@ -382,7 +382,7 @@ pub struct OpReply {
 	cursor_id : i64,
 	start : i32,
 	nret : i32,
-	pub docs : Vec<Document>,
+	docs : Vec<Document>,
 }
 impl OpReply {
 	pub fn decode(buf:&mut Read)-> OpReply{
@@ -406,5 +406,8 @@ impl OpReply {
 				docs
 			},
 		}
+	}
+	pub fn docs(&self) -> &Vec<Document>{
+		&self.docs
 	}
 }
